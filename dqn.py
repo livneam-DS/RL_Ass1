@@ -4,6 +4,7 @@ from gym.envs.registration import EnvRegistry
 from keras.models import Sequential
 import numpy as np
 from keras.layers import Dense
+from keras.models import load_model
 import gym
 import matplotlib.pyplot as plt
 from keras.optimizers import Adam
@@ -121,31 +122,41 @@ class DQN:
             if ((index + 1) % self.target_update) == 0:
                 self.target_model.set_weights(self.Q.get_weights())
 
+    def save_model(self):
+        self.target_model.save('target_model.h5')
+        self.Q.save('Q.h5')
 
-params = {'alpha': 0.1,
+
+params = {'alpha': 0.01,
           'discount_factor': 0.99,
           'epsilon': 1,
-          'min_epsilon': 0.25,
+          'min_epsilon': 0.02,
           'decay': 0.95,
-          'train_episodes': 5000,
+          'train_episodes': 600,
           'max_steps': 100,
-          'batch_size': 128,
+          'batch_size': 32,
           'replay_buffer_size': 256,
           'target_update': 16
           }
 
 dqn = DQN(**params)
 env = gym.make('CartPole-v0')
-dqn.learn_environment(env)
 
-for i_episode in range(1):
+#dqn.learn_environment(env)
+#dqn.save_model()
+
+dqn.Q = load_model('Q.h5')
+
+for i_episode in range(100):
     state = env.reset().reshape(1, 4)
-    for t in range(100):
-        env.render()
+    while True:
         print(state)
         action = dqn.act(state)
-        observation, reward, done, info = env.step(action)
+        state, reward, done, info = env.step(action)
+        state = state.reshape(1,4)
+        env.render()
         if done:
-            print("Episode finished after {} timesteps".format(t + 1))
+            print("DONE")
             break
 env.close()
+
