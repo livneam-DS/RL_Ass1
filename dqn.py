@@ -1,15 +1,14 @@
 from collections import namedtuple
 import tensorflow as tf
+import os
 from gym.envs.registration import EnvRegistry
 from keras.models import Sequential
 import numpy as np
 from keras.layers import Dense
-from keras.models import load_model
 import gym
-import matplotlib.pyplot as plt
 from keras.optimizers import Adam
-from tqdm import tqdm
 import random
+import json
 
 Transition = namedtuple('Transition',
                         ('state', 'action', 'next_state', 'reward', 'is_terminal'))
@@ -37,22 +36,22 @@ class ReplayMemory(object):
         return len(self.memory)
 
 
-def get_model(n_input=4, n_output=2, n_hidden_layers=2, n_neurons=16, learning_rate=0.001):
+def get_model(n_input=4, n_output=2, n_hidden_layers=3, n_neurons=64, learning_rate=0.001):
     model = Sequential()
     model.add(Dense(n_neurons, input_dim=n_input, activation='relu'))
     for layer_index in range(n_hidden_layers - 1):
         model.add(Dense(n_neurons, activation='relu'))
-    model.add(Dense(n_output))
+    model.add(Dense(n_output, activation='linear', name='action'))
 
     optimizer = Adam(lr=learning_rate)
-    model.compile(loss='MSE', optimizer=optimizer)
+    model.compile(loss='mse', optimizer=optimizer)
     return model
 
 
 class DQN:
     def __init__(self, alpha: float, discount_factor: float, epsilon: float, min_epsilon: float, decay: float,
                  train_episodes: int, max_steps: int, batch_size: int,
-                 replay_buffer_size: int, target_update: int):
+                 replay_buffer_size: int, target_update: int, result_folder: str):
         self.alpha = alpha
         self.discount_factor = discount_factor
         self.epsilon = epsilon
@@ -61,102 +60,125 @@ class DQN:
         self.train_episodes = train_episodes
         self.max_steps = max_steps
         self.batch_size = batch_size
-        self.target_update = target_update
+        self.target_update_counter = target_update
         self.replay_buffer: ReplayMemory = ReplayMemory(replay_buffer_size)
-
+        self.replay_counter = 0
         self.target_model = get_model()
         self.Q = get_model()
+        self.result_folder = result_folder
 
     def act(self, state):
-        return np.argmax(self.Q.predict(state)[0])
+        return np.argmax(self.target_model.predict(state)[0])
 
     def learn_environment(self, env, verbose=False):
         epsilon = self.epsilon
-        current_reward = 0
-        for episode in tqdm(range(self.train_episodes)):
-            state = env.reset().reshape(1, 4)
-            step = 0
 
+        acc_rewards = []
+        epsilons = []
+
+        episode = -1
+
+        while True:
+            episode += 1
+            current_reward = 0
+            if ((episode + 1) % 5) == 0:
+                self.save_model()
+                self.save_list(acc_rewards, 'rewards')
+                self.save_list(epsilons, 'epsilons')
+                self.save_list([episode], 'am_alive')
+
+            if episode == 1001:
+                break
+
+            state = env.reset().reshape(1, 4)
             for step in range(self.max_steps):
                 if verbose:
                     env.render()
-                rand = np.random.rand()
-                if params['epsilon'] > rand:
+
+                if np.random.rand() < params['epsilon']:
                     action = env.action_space.sample()
                 else:
-                    action = np.argmax(self.target_model.predict(state)[0])
+                    action = self.act(state)
 
                 new_state, reward, terminal, info = env.step(action)
+
+                #                 if terminal:
+                #                     reward = -100
+
                 new_state = new_state.reshape(1, 4)
                 current_reward += reward
 
-                self.replay_buffer.push(state, action, new_state, reward, terminal)
+                self.replay_buffer.push(state, action, np.zeros(state.shape), reward, terminal)
                 self.replay_training()
 
+                if ((self.replay_counter + 1) % self.target_update_counter) == 0:
+                    self.update_target_model()
+
                 state = new_state
-                epsilon = max(self.min_epsilon, self.decay * epsilon)
 
                 if terminal:
                     break
 
-    def replay_training(self):
+            acc_rewards.append(current_reward)
+            epsilon = max(self.min_epsilon, self.decay * epsilon)
+            epsilons.append(epsilon)
 
+    def replay_training(self):
         # not enough for a batch
         if self.replay_buffer.position < self.batch_size:
             return
 
         samples = self.replay_buffer.sample(self.batch_size)
-        for index, sample in enumerate(samples):
-            state, action, new_state, reward, terminal = sample
-            target = self.target_model.predict(state)
 
-            if terminal:
-                target[0][action] = reward
-            else:
-                debug = self.target_model.predict(new_state)
-                Q_future = max(self.target_model.predict(new_state)[0])
-                target[0][action] = reward + Q_future * self.discount_factor
+        for state, action, new_state, reward, terminal in samples:
+            q_update = reward
 
-            self.Q.fit(state, target, epochs=1, verbose=0)
+            if not terminal:
+                q_update = (reward + self.discount_factor * np.amax(self.target_model.predict(new_state)[0]))
 
-            if ((index + 1) % self.target_update) == 0:
-                self.target_model.set_weights(self.Q.get_weights())
+            q_values = self.Q.predict(state)
+            q_values[0][action] = q_update
+
+            self.Q.fit(state, q_values, verbose=0)
+
+        self.replay_counter += 1
+
+    def update_target_model(self):
+        self.target_model.set_weights(self.Q.get_weights())
 
     def save_model(self):
-        self.target_model.save('target_model.h5')
-        self.Q.save('Q.h5')
+        self.Q.save(f'{self.result_folder}/Q.h5')
+        self.target_model.save(f'{self.result_folder}/target.h5')
+
+    def save_list(self, arr, name):
+        with open(f'{self.result_folder}/{name}.txt', 'w+') as f:
+            for val in arr:
+                f.write(str(val) + '\n')
 
 
-params = {'alpha': 0.01,
-          'discount_factor': 0.99,
+res_folder = 'res2'
+params = {'alpha': 0.001,
+          'discount_factor': 0.95,
           'epsilon': 1,
-          'min_epsilon': 0.02,
-          'decay': 0.95,
-          'train_episodes': 600,
-          'max_steps': 100,
-          'batch_size': 32,
-          'replay_buffer_size': 256,
-          'target_update': 16
+          'min_epsilon': 0.01,
+          'decay': 0.99,
+          'train_episodes': 150,
+          'max_steps': 500,
+          'batch_size': 512,
+          'replay_buffer_size': 4096,
+          'target_update': 5,
+          'result_folder': res_folder
           }
 
+try:
+    os.mkdir(res_folder)
+except:
+    pass
+
+with open(f'{res_folder}/expr_params.json', 'w+') as f:
+    json.dump(params, f)
+
 dqn = DQN(**params)
-env = gym.make('CartPole-v0')
-
-#dqn.learn_environment(env)
-#dqn.save_model()
-
-dqn.Q = load_model('Q.h5')
-
-for i_episode in range(100):
-    state = env.reset().reshape(1, 4)
-    while True:
-        print(state)
-        action = dqn.act(state)
-        state, reward, done, info = env.step(action)
-        state = state.reshape(1,4)
-        env.render()
-        if done:
-            print("DONE")
-            break
-env.close()
-
+env = gym.make('CartPole-v1')
+dqn.learn_environment(env)
+dqn.save_model()
