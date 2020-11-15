@@ -10,13 +10,21 @@ from keras.optimizers import Adam
 import random
 import json
 from keras.models import Model
-from keras.layers import Input, Dense
+from keras.layers import Input, Dense, Dropout, BatchNormalization, Activation
 from keras.optimizers import Adam, RMSprop
 from tqdm import tqdm
 
 Transition = namedtuple('Transition',
                         ('state', 'action', 'next_state', 'reward', 'is_terminal'))
 
+seed_value = 42
+def init_seeds():
+    os.environ['PYTHONHASHSEED']=str(seed_value)
+    random.seed(seed_value)
+    np.random.seed(seed_value)
+    tf.random.set_seed(seed_value)
+    
+init_seeds()
 
 class ReplayMemory(object):
 
@@ -40,36 +48,23 @@ class ReplayMemory(object):
         return len(self.memory)
 
 
-# def get_model(n_input=4, n_output=2, n_hidden_layers=3, n_neurons=64, learning_rate=0.001):
-#     model = Sequential()
-#     model.add(Dense(n_neurons, input_dim=n_input, activation='relu'))
-#     for layer_index in range(n_hidden_layers - 1):
-#         model.add(Dense(n_neurons, activation='relu'))
-#     model.add(Dense(n_output, activation='linear', name='action'))
 
-#     optimizer = Adam(lr=learning_rate)
-#     model.compile(loss='mse', optimizer=optimizer)
-#     return model
-
-
-def get_model(input_shape=tuple([4]), action_space=2, learning_rate = 0.00025):
+def get_model(input_shape=tuple([4]), action_space=2, learning_rate=0.001, hidden_layers = (32,32,32), verbose=False):
     X_input = Input(input_shape)
+    
+    for index, hl in enumerate(hidden_layers):
+        if index == 0:
+            X = Dense(hl, activation="relu")(X_input)    
+        else:
+            X = Dense(hl, activation="relu")(X)
+            
 
-    # 'Dense' is the basic form of a neural network layer
-    # Input Layer of state size(4) and Hidden Layer with 512 nodes
-    X = Dense(512, input_shape=input_shape, activation="relu", kernel_initializer='he_uniform')(X_input)
-
-    # Hidden layer with 256 nodes
-    X = Dense(256, activation="relu", kernel_initializer='he_uniform')(X)
-
-    # Hidden layer with 64 nodes
-    X = Dense(64, activation="relu", kernel_initializer='he_uniform')(X)
-
-    # Output Layer with # of actions: 2 nodes (left, right)
-    X = Dense(action_space, activation="linear", kernel_initializer='he_uniform')(X)
-
+    X = Dense(action_space, activation="linear")(X)
     model = Model(inputs=X_input, outputs=X, name='CartPole_DQN_model')
-    model.compile(loss="mse", optimizer=RMSprop(lr=learning_rate, rho=0.95, epsilon=0.01), metrics=["accuracy"])
+    model.compile(loss="mse", optimizer=Adam(learning_rate=learning_rate), metrics=["accuracy"])
+    
+    if verbose:
+        model.summary()
 
     return model
 
@@ -77,7 +72,7 @@ def get_model(input_shape=tuple([4]), action_space=2, learning_rate = 0.00025):
 class DQN:
     def __init__(self, alpha: float, discount_factor: float, epsilon: float, min_epsilon: float, decay: float,
                  train_episodes: int, max_steps: int, batch_size: int,
-                 replay_buffer_size: int, target_update: int, result_folder: str, train_start: int):
+                 replay_buffer_size: int, target_update: int, result_folder: str, train_start: int, layer_struct):
         self.alpha = alpha
         self.discount_factor = discount_factor
         self.epsilon = epsilon
@@ -89,10 +84,11 @@ class DQN:
         self.target_update_counter = target_update
         self.replay_buffer: ReplayMemory = ReplayMemory(replay_buffer_size)
         self.replay_counter = 0
-        self.target_model = get_model(learning_rate = alpha)
-        self.Q = get_model(learning_rate = alpha)
+        self.target_model = get_model(learning_rate = alpha, hidden_layers=layer_struct, verbose=True)
+        self.Q = get_model(learning_rate = alpha, hidden_layers=layer_struct)
         self.result_folder = result_folder
         self.train_start = train_start
+        self.history = None
 
     def act(self, state):
         return np.argmax(self.Q.predict(state)[0])
@@ -102,15 +98,27 @@ class DQN:
         epsilon = self.epsilon
         acc_rewards = []
         epsilons = []
+        losses = []
         episode = -1
-
+        threshold_for_stopping = 475
+        
         for _ in tqdm(range(self.train_episodes)):
+            
+
+            
             episode += 1
-            if ((episode + 1) % 5) == 0:
-                self.save_model()
-                self.save_list(acc_rewards, 'rewards')
-                self.save_list(epsilons, 'epsilons')
-                self.save_list([episode], 'am_alive')
+            
+            self.save_model()
+            self.save_list(acc_rewards, 'rewards')
+            self.save_list(epsilons, 'epsilons')
+            self.save_list([episode], 'am_alive')
+                
+            if self.history is not None:
+                losses += list(self.history.history['loss'])
+                self.save_list(losses, 'loss')
+                
+            if len(acc_rewards) > 100 and np.mean(acc_rewards[-100:]) > threshold_for_stopping:
+                break
 
             state = env.reset()
             state = np.reshape(state, (1, 4))
@@ -136,7 +144,7 @@ class DQN:
                     reward = -100
 
                 self.replay_buffer.push(state, action, new_state, reward, terminal)
-                self.replay_training()
+                
 
                 if ((self.replay_counter + 1) % self.target_update_counter) == 0:
                     self.update_target_model()
@@ -145,7 +153,8 @@ class DQN:
 
                 if terminal:
                     break
-
+                    
+            self.replay_training()
             acc_rewards.append(current_reward)
             epsilon = max(self.min_epsilon, self.decay * epsilon)
             epsilons.append(epsilon)
@@ -176,7 +185,7 @@ class DQN:
             else:
                 target[i][action[i]] = reward[i] + self.discount_factor * (np.amax(target_next[i]))
 
-        self.Q.fit(states, target, batch_size=self.batch_size, verbose=False)
+        self.history = self.Q.fit(states, target, batch_size=self.batch_size, verbose=False)
         self.replay_counter += 1
 
     def update_target_model(self):
@@ -192,19 +201,20 @@ class DQN:
                 f.write(str(val) + '\n')
 
 
-res_folder = 'res6'
+res_folder = 'res3'
 params = {'alpha': 0.001,
           'discount_factor': 0.95,
           'epsilon': 1,
-          'min_epsilon': 0.0005,
-          'decay': 0.99,
-          'train_episodes': 1000,
+          'min_epsilon': 0.01,
+          'decay': 0.995,
+          'train_episodes': 10000,
           'max_steps': 500,
-          'batch_size': 256,
-          'replay_buffer_size': 8192,
-          'target_update': 10,
+          'batch_size': 64,
+          'replay_buffer_size': 16000,
+          'target_update': 3,
           'result_folder': res_folder,
-          'train_start': 1024
+          'train_start': 128,
+          'layer_struct': (32,32,32, 16,8)
           }
 
 try:
