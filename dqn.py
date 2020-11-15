@@ -9,6 +9,10 @@ import gym
 from keras.optimizers import Adam
 import random
 import json
+from keras.models import Model
+from keras.layers import Input, Dense
+from keras.optimizers import Adam, RMSprop
+from tqdm import tqdm
 
 Transition = namedtuple('Transition',
                         ('state', 'action', 'next_state', 'reward', 'is_terminal'))
@@ -36,22 +40,44 @@ class ReplayMemory(object):
         return len(self.memory)
 
 
-def get_model(n_input=4, n_output=2, n_hidden_layers=3, n_neurons=64, learning_rate=0.001):
-    model = Sequential()
-    model.add(Dense(n_neurons, input_dim=n_input, activation='relu'))
-    for layer_index in range(n_hidden_layers - 1):
-        model.add(Dense(n_neurons, activation='relu'))
-    model.add(Dense(n_output, activation='linear', name='action'))
+# def get_model(n_input=4, n_output=2, n_hidden_layers=3, n_neurons=64, learning_rate=0.001):
+#     model = Sequential()
+#     model.add(Dense(n_neurons, input_dim=n_input, activation='relu'))
+#     for layer_index in range(n_hidden_layers - 1):
+#         model.add(Dense(n_neurons, activation='relu'))
+#     model.add(Dense(n_output, activation='linear', name='action'))
 
-    optimizer = Adam(lr=learning_rate)
-    model.compile(loss='mse', optimizer=optimizer)
+#     optimizer = Adam(lr=learning_rate)
+#     model.compile(loss='mse', optimizer=optimizer)
+#     return model
+
+
+def get_model(input_shape=tuple([4]), action_space=2, learning_rate = 0.00025):
+    X_input = Input(input_shape)
+
+    # 'Dense' is the basic form of a neural network layer
+    # Input Layer of state size(4) and Hidden Layer with 512 nodes
+    X = Dense(512, input_shape=input_shape, activation="relu", kernel_initializer='he_uniform')(X_input)
+
+    # Hidden layer with 256 nodes
+    X = Dense(256, activation="relu", kernel_initializer='he_uniform')(X)
+
+    # Hidden layer with 64 nodes
+    X = Dense(64, activation="relu", kernel_initializer='he_uniform')(X)
+
+    # Output Layer with # of actions: 2 nodes (left, right)
+    X = Dense(action_space, activation="linear", kernel_initializer='he_uniform')(X)
+
+    model = Model(inputs=X_input, outputs=X, name='CartPole_DQN_model')
+    model.compile(loss="mse", optimizer=RMSprop(lr=learning_rate, rho=0.95, epsilon=0.01), metrics=["accuracy"])
+
     return model
 
 
 class DQN:
     def __init__(self, alpha: float, discount_factor: float, epsilon: float, min_epsilon: float, decay: float,
                  train_episodes: int, max_steps: int, batch_size: int,
-                 replay_buffer_size: int, target_update: int, result_folder: str):
+                 replay_buffer_size: int, target_update: int, result_folder: str, train_start: int):
         self.alpha = alpha
         self.discount_factor = discount_factor
         self.epsilon = epsilon
@@ -63,52 +89,53 @@ class DQN:
         self.target_update_counter = target_update
         self.replay_buffer: ReplayMemory = ReplayMemory(replay_buffer_size)
         self.replay_counter = 0
-        self.target_model = get_model()
-        self.Q = get_model()
+        self.target_model = get_model(learning_rate = alpha)
+        self.Q = get_model(learning_rate = alpha)
         self.result_folder = result_folder
+        self.train_start = train_start
 
     def act(self, state):
-        return np.argmax(self.target_model.predict(state)[0])
+        return np.argmax(self.Q.predict(state)[0])
 
     def learn_environment(self, env, verbose=False):
+        self.update_target_model()
         epsilon = self.epsilon
-
         acc_rewards = []
         epsilons = []
-
         episode = -1
 
-        while True:
+        for _ in tqdm(range(self.train_episodes)):
             episode += 1
-            current_reward = 0
             if ((episode + 1) % 5) == 0:
                 self.save_model()
                 self.save_list(acc_rewards, 'rewards')
                 self.save_list(epsilons, 'epsilons')
                 self.save_list([episode], 'am_alive')
 
-            if episode == 1001:
-                break
+            state = env.reset()
+            state = np.reshape(state, (1, 4))
 
-            state = env.reset().reshape(1, 4)
+            current_reward = 0
             for step in range(self.max_steps):
                 if verbose:
                     env.render()
 
-                if np.random.rand() < params['epsilon']:
+                if np.random.rand() < epsilon:
                     action = env.action_space.sample()
                 else:
                     action = self.act(state)
 
                 new_state, reward, terminal, info = env.step(action)
 
-                #                 if terminal:
-                #                     reward = -100
-
                 new_state = new_state.reshape(1, 4)
                 current_reward += reward
 
-                self.replay_buffer.push(state, action, np.zeros(state.shape), reward, terminal)
+                if not terminal or step == env._max_episode_steps - 1:
+                    reward = reward
+                else:
+                    reward = -100
+
+                self.replay_buffer.push(state, action, new_state, reward, terminal)
                 self.replay_training()
 
                 if ((self.replay_counter + 1) % self.target_update_counter) == 0:
@@ -125,22 +152,31 @@ class DQN:
 
     def replay_training(self):
         # not enough for a batch
-        if self.replay_buffer.position < self.batch_size:
+        if len(self.replay_buffer.memory) < self.train_start:
             return
 
         samples = self.replay_buffer.sample(self.batch_size)
+        states = np.zeros((self.batch_size, 4))
+        next_states = np.zeros((self.batch_size, 4))
+        action, reward, done = [], [], []
 
-        for state, action, new_state, reward, terminal in samples:
-            q_update = reward
+        for i in range(self.batch_size):
+            states[i] = samples[i][0][0]
+            action.append(samples[i][1])
+            next_states[i] = samples[i][2][0]
+            reward.append(samples[i][3])
+            done.append(samples[i][4])
 
-            if not terminal:
-                q_update = (reward + self.discount_factor * np.amax(self.target_model.predict(new_state)[0]))
+        target = self.Q.predict(states)
+        target_next = self.target_model.predict(next_states)
 
-            q_values = self.Q.predict(state)
-            q_values[0][action] = q_update
+        for i in range(self.batch_size):
+            if done[i]:
+                target[i][action[i]] = reward[i]
+            else:
+                target[i][action[i]] = reward[i] + self.discount_factor * (np.amax(target_next[i]))
 
-            self.Q.fit(state, q_values, verbose=0)
-
+        self.Q.fit(states, target, batch_size=self.batch_size, verbose=False)
         self.replay_counter += 1
 
     def update_target_model(self):
@@ -156,18 +192,19 @@ class DQN:
                 f.write(str(val) + '\n')
 
 
-res_folder = 'res2'
+res_folder = 'res6'
 params = {'alpha': 0.001,
           'discount_factor': 0.95,
           'epsilon': 1,
-          'min_epsilon': 0.01,
+          'min_epsilon': 0.0005,
           'decay': 0.99,
-          'train_episodes': 150,
+          'train_episodes': 1000,
           'max_steps': 500,
-          'batch_size': 512,
-          'replay_buffer_size': 4096,
-          'target_update': 5,
-          'result_folder': res_folder
+          'batch_size': 256,
+          'replay_buffer_size': 8192,
+          'target_update': 10,
+          'result_folder': res_folder,
+          'train_start': 1024
           }
 
 try:
