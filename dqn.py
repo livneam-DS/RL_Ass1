@@ -4,27 +4,31 @@ import os
 from gym.envs.registration import EnvRegistry
 from keras.models import Sequential
 import numpy as np
-from keras.layers import Dense
+from keras.layers import Dense, Lambda, Add
 import gym
-from keras.optimizers import Adam
 import random
 import json
 from keras.models import Model
 from keras.layers import Input, Dense, Dropout, BatchNormalization, Activation
 from keras.optimizers import Adam, RMSprop
 from tqdm import tqdm
+import keras.backend as K
 
 Transition = namedtuple('Transition',
                         ('state', 'action', 'next_state', 'reward', 'is_terminal'))
 
 seed_value = 42
+
+
 def init_seeds():
-    os.environ['PYTHONHASHSEED']=str(seed_value)
+    os.environ['PYTHONHASHSEED'] = str(seed_value)
     random.seed(seed_value)
     np.random.seed(seed_value)
     tf.random.set_seed(seed_value)
-    
+
+
 init_seeds()
+
 
 class ReplayMemory(object):
 
@@ -48,21 +52,31 @@ class ReplayMemory(object):
         return len(self.memory)
 
 
-
-def get_model(input_shape=tuple([4]), action_space=2, learning_rate=0.001, hidden_layers = (32,32,32), verbose=False):
+def get_model(input_shape=tuple([4]), action_space=2, learning_rate=0.001, hidden_layers=(32, 32, 32), verbose=False,
+              dueling=False):
     X_input = Input(input_shape)
-    
+    X = None
+
     for index, hl in enumerate(hidden_layers):
         if index == 0:
-            X = Dense(hl, activation="relu")(X_input)    
+            X = Dense(hl, activation="relu")(X_input)
         else:
             X = Dense(hl, activation="relu")(X)
-            
 
-    X = Dense(action_space, activation="linear")(X)
+    if not dueling:
+        X = Dense(action_space, activation="linear")(X)
+    else:
+        state_value = Dense(1)(X)
+        state_value = Lambda(lambda s: K.expand_dims(s[:, 0], -1), output_shape=(action_space,))(state_value)
+
+        action_advantage = Dense(action_space)(X)
+        action_advantage = Lambda(lambda a: a[:, :] - K.mean(a[:, :], keepdims=True), output_shape=(action_space,))(
+            action_advantage)
+        X = Add()([state_value, action_advantage])
+
     model = Model(inputs=X_input, outputs=X, name='CartPole_DQN_model')
     model.compile(loss="mse", optimizer=Adam(learning_rate=learning_rate), metrics=["accuracy"])
-    
+
     if verbose:
         model.summary()
 
@@ -72,7 +86,8 @@ def get_model(input_shape=tuple([4]), action_space=2, learning_rate=0.001, hidde
 class DQN:
     def __init__(self, alpha: float, discount_factor: float, epsilon: float, min_epsilon: float, decay: float,
                  train_episodes: int, max_steps: int, batch_size: int,
-                 replay_buffer_size: int, target_update: int, result_folder: str, train_start: int, layer_struct):
+                 replay_buffer_size: int, target_update: int, result_folder: str, train_start: int, layer_struct: tuple,
+                 dueling: bool):
         self.alpha = alpha
         self.discount_factor = discount_factor
         self.epsilon = epsilon
@@ -84,8 +99,8 @@ class DQN:
         self.target_update_counter = target_update
         self.replay_buffer: ReplayMemory = ReplayMemory(replay_buffer_size)
         self.replay_counter = 0
-        self.target_model = get_model(learning_rate = alpha, hidden_layers=layer_struct, verbose=True)
-        self.Q = get_model(learning_rate = alpha, hidden_layers=layer_struct)
+        self.target_model = get_model(learning_rate=alpha, hidden_layers=layer_struct, verbose=True, dueling=dueling)
+        self.Q = get_model(learning_rate=alpha, hidden_layers=layer_struct, dueling=dueling)
         self.result_folder = result_folder
         self.train_start = train_start
         self.history = None
@@ -101,22 +116,20 @@ class DQN:
         losses = []
         episode = -1
         threshold_for_stopping = 475
-        
-        for _ in tqdm(range(self.train_episodes)):
-            
 
-            
+        for _ in tqdm(range(self.train_episodes)):
+
             episode += 1
-            
+
             self.save_model()
             self.save_list(acc_rewards, 'rewards')
             self.save_list(epsilons, 'epsilons')
             self.save_list([episode], 'am_alive')
-                
+
             if self.history is not None:
                 losses += list(self.history.history['loss'])
                 self.save_list(losses, 'loss')
-                
+
             if len(acc_rewards) > 100 and np.mean(acc_rewards[-100:]) > threshold_for_stopping:
                 break
 
@@ -144,7 +157,6 @@ class DQN:
                     reward = -100
 
                 self.replay_buffer.push(state, action, new_state, reward, terminal)
-                
 
                 if ((self.replay_counter + 1) % self.target_update_counter) == 0:
                     self.update_target_model()
@@ -153,7 +165,7 @@ class DQN:
 
                 if terminal:
                     break
-                    
+
             self.replay_training()
             acc_rewards.append(current_reward)
             epsilon = max(self.min_epsilon, self.decay * epsilon)
@@ -201,7 +213,7 @@ class DQN:
                 f.write(str(val) + '\n')
 
 
-res_folder = 'res3'
+res_folder = 'res4_dueldqn'
 params = {'alpha': 0.001,
           'discount_factor': 0.95,
           'epsilon': 1,
@@ -214,7 +226,8 @@ params = {'alpha': 0.001,
           'target_update': 3,
           'result_folder': res_folder,
           'train_start': 128,
-          'layer_struct': (32,32,32, 16,8)
+          'layer_struct': (32, 32, 32, 16, 8),
+          'dueling': True
           }
 
 try:
