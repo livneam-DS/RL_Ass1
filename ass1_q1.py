@@ -17,19 +17,18 @@ params = {'alpha': 0.1,
           'train_episodes': 5000,
           'max_steps': 100}
 
-
 actions_dict = {0: 'Left',
                 1: 'Down',
                 2: 'Right',
                 3: 'Up'}
 
-q_to_plot = [499,1999,4999]
+q_to_plot = [499, 1999, 4999]
+
 
 def heatmap(data, row_labels, col_labels, ax=None,
-            cbar_kw={}, cbarlabel="", **kwargs):
+            cbar_kw=None, cbarlabel="", **kwargs):
     """
     Create a heatmap from a numpy array and two lists of labels.
-
     Arguments:
         data       : A 2D numpy array of shape (N,M)
         row_labels : A list or array of length N with the labels
@@ -41,11 +40,14 @@ def heatmap(data, row_labels, col_labels, ax=None,
                      is plotted. If not provided, use current axes or
                      create a new one.
         cbar_kw    : A dictionary with arguments to
+                     :param cbarlabel:
                      :meth:`matplotlib.Figure.colorbar`.
         cbarlabel  : The label for the colorbar
     All other arguments are directly passed on to the imshow call.
     """
 
+    if cbar_kw is None:
+        cbar_kw = {}
     if not ax:
         ax = plt.gca()
 
@@ -84,11 +86,10 @@ def heatmap(data, row_labels, col_labels, ax=None,
 
 
 def annotate_heatmap(im, data=None, valfmt="{x:.2f}",
-                     textcolors=["black", "white"],
+                     textcolors=None,
                      threshold=None, **textkw):
     """
     A function to annotate a heatmap.
-
     Arguments:
         im         : The AxesImage to be labeled.
     Optional arguments:
@@ -102,10 +103,14 @@ def annotate_heatmap(im, data=None, valfmt="{x:.2f}",
         threshold  : Value in data units according to which the colors from
                      textcolors are applied. If None (the default) uses the
                      middle of the colormap as separation.
-
     Further arguments are passed on to the created text labels.
+    :param textcolors:
+    :param threshold:
+    :param data:
     """
 
+    if textcolors is None:
+        textcolors = ["black", "white"]
     if not isinstance(data, (list, np.ndarray)):
         data = im.get_array()
 
@@ -149,9 +154,8 @@ def plot_q(Q):
     plt.show()
 
 
-def q_learning(env, Q, params, actions_dict,q_to_plot, verbose=False):
+def q_learning(env, Q, params, actions_dict, q_to_plot, verbose=False):
     """
-
     :param env:
     :param Q:
     :param params:
@@ -160,9 +164,15 @@ def q_learning(env, Q, params, actions_dict,q_to_plot, verbose=False):
     """
     r_per_episode = []
     step_per_episode = []
+    eps = []
+    steps_window = []
+
+    current_reward = 0
     for episode in tqdm(range(params['train_episodes'])):
-        current_reward = 0
+
         state = env.reset()
+
+        step = 0
         for step in range(params['max_steps']):
             if verbose:
                 env.render()
@@ -186,17 +196,30 @@ def q_learning(env, Q, params, actions_dict,q_to_plot, verbose=False):
 
             if terminal:
                 break
+
         r_per_episode.append(current_reward)
-        step_per_episode.append(step)
+        if ((episode + 1) % 100) == 0:
+            step_per_episode.append(np.mean(steps_window))
+            steps_window.clear()
+        else:
+            steps_window.append(step)
+
         params['epsilon'] = max(params['min_epsilon'], params['epsilon'] * params['decay'])
+        eps.append(params['epsilon'])
         if episode in q_to_plot:
             plot_q(Q)
 
-    return r_per_episode, step_per_episode
+    return r_per_episode, step_per_episode, eps
 
 
-x, y = q_learning(env=env, Q=Q, actions_dict=actions_dict, params=params,q_to_plot=q_to_plot, verbose=False)
+x, y, eps = q_learning(env=env, Q=Q, actions_dict=actions_dict, params=params, q_to_plot=q_to_plot, verbose=False)
+plt.plot(x)
+plt.title("Rewards Per Episode")
+plt.show()
 
+plt.plot(y)
+plt.title('Steps per episode')
+plt.show()
 
-
-
+plt.plot(eps)
+plt.title('Epsilions')
