@@ -13,6 +13,7 @@ from keras.layers import Input, Dense, Dropout, BatchNormalization, Activation
 from keras.optimizers import Adam, RMSprop
 from tqdm import tqdm
 import keras.backend as K
+from itertools import product
 
 Transition = namedtuple('Transition',
                         ('state', 'action', 'next_state', 'reward', 'is_terminal'))
@@ -116,6 +117,7 @@ class DQN:
         losses = []
         episode = -1
         threshold_for_stopping = 475
+        step_counter = 0
 
         for _ in tqdm(range(self.train_episodes)):
 
@@ -147,28 +149,30 @@ class DQN:
                     action = self.act(state)
 
                 new_state, reward, terminal, info = env.step(action)
-
+                step_counter += 1
+                
                 new_state = new_state.reshape(1, 4)
                 current_reward += reward
 
                 if not terminal or step == env._max_episode_steps - 1:
                     reward = reward
                 else:
-                    reward = -100
+                    reward = -500
 
                 self.replay_buffer.push(state, action, new_state, reward, terminal)
+                self.replay_training()
 
-                if ((self.replay_counter + 1) % self.target_update_counter) == 0:
+                if ((step_counter + 1) % self.target_update_counter) == 0:
                     self.update_target_model()
 
                 state = new_state
 
                 if terminal:
                     break
-
-            self.replay_training()
+                epsilon = max(self.min_epsilon, self.decay * epsilon)
+            
             acc_rewards.append(current_reward)
-            epsilon = max(self.min_epsilon, self.decay * epsilon)
+            
             epsilons.append(epsilon)
 
     def replay_training(self):
@@ -213,32 +217,67 @@ class DQN:
                 f.write(str(val) + '\n')
 
 
-res_folder = 'res4_dueldqn'
-params = {'alpha': 0.001,
+
+                
+
+def_params = {'alpha': 0.00005,
           'discount_factor': 0.95,
           'epsilon': 1,
-          'min_epsilon': 0.01,
+          'min_epsilon': 0.001,
           'decay': 0.995,
           'train_episodes': 10000,
           'max_steps': 500,
-          'batch_size': 64,
-          'replay_buffer_size': 16000,
-          'target_update': 3,
-          'result_folder': res_folder,
-          'train_start': 128,
-          'layer_struct': (32, 32, 32, 16, 8),
-          'dueling': True
-          }
+          'batch_size': 128,
+          'replay_buffer_size': 2 ** 14,
+          'target_update': 250,
+          'result_folder': 'testDDQN/',
+          'train_start': 1024,
+          'layer_struct': (32, 32, 32),
+          'dueling': False
+         }
 
-try:
-    os.mkdir(res_folder)
-except:
-    pass
-
-with open(f'{res_folder}/expr_params.json', 'w+') as f:
-    json.dump(params, f)
-
-dqn = DQN(**params)
+dqn = DQN(**def_params)
 env = gym.make('CartPole-v1')
 dqn.learn_environment(env)
 dqn.save_model()
+
+# lr = [0.001, 0.005]
+# batch_size = [64,128]
+# decay = [0.995, 0.95]
+# target_update = [3, 5]
+# layers_struct = [(32, 32, 32, 16, 8), (32, 32, 32)]
+# dueling = [True]
+
+# params_to_run = list(product(*[lr, batch_size, decay, target_update,layers_struct, dueling]))
+# for index, param_combination in enumerate(params_to_run):
+#     lr_val, batch_val, decay_val, target_update_val, layers_struct_val, dueling_val = param_combination
+    
+#     param_dict = def_params.copy()
+#     param_dict['alpha'] = lr_val
+#     param_dict['batch_size'] = batch_val
+#     param_dict['decay'] = decay_val
+#     param_dict['target_update'] = target_update_val
+#     param_dict['layer_struct'] = layers_struct_val
+#     param_dict['dueling'] = dueling_val
+    
+    
+#     if dueling_val:
+#         res_folder = f'iterative_runs/with_deuling/run_{index}'
+#     else:
+#         res_folder = f'iterative_runs/without/run_{index}'
+    
+    
+#     param_dict['result_folder'] = res_folder
+    
+#     try:
+#         os.mkdir(res_folder)
+#     except:
+#         pass
+
+#     with open(f'{res_folder}/expr_params.json', 'w+') as f:
+#         json.dump(param_dict, f)
+
+#     dqn = DQN(**param_dict)
+#     env = gym.make('CartPole-v1')
+#     dqn.learn_environment(env)
+#     dqn.save_model()
