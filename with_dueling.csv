@@ -1,0 +1,33 @@
+alpha,discount_factor,epsilon,min_epsilon,decay,train_episodes,max_steps,batch_size,replay_buffer_size,target_update,result_folder,train_start,layer_struct,writer,Episodes till convergence,Average rewards last 100 episodes
+5e-05,0.95,1,0.001,0.995,10000,500,64,16384,250,iterative_runs_fixed/with_deuling/run_0,1024,"[32, 32, 32, 16, 8]",,918,476.22
+5e-05,0.95,1,0.001,0.995,10000,500,64,16384,250,iterative_runs_fixed/with_deuling/run_1,1024,"[32, 32, 32]",,1151,476.36
+5e-05,0.95,1,0.001,0.995,10000,500,64,16384,300,iterative_runs_fixed/with_deuling/run_2,1024,"[32, 32, 32, 16, 8]",,901,476.13
+5e-05,0.95,1,0.001,0.995,10000,500,64,16384,300,iterative_runs_fixed/with_deuling/run_3,1024,"[32, 32, 32]",,1900,475.55
+5e-05,0.95,1,0.001,0.95,10000,500,64,16384,250,iterative_runs_fixed/with_deuling/run_4,1024,"[32, 32, 32, 16, 8]",,1565,475.18
+5e-05,0.95,1,0.001,0.95,10000,500,64,16384,250,iterative_runs_fixed/with_deuling/run_5,1024,"[32, 32, 32]",,670,478.31
+5e-05,0.95,1,0.001,0.95,10000,500,64,16384,300,iterative_runs_fixed/with_deuling/run_6,1024,"[32, 32, 32, 16, 8]",,868,475.67
+5e-05,0.95,1,0.001,0.95,10000,500,64,16384,300,iterative_runs_fixed/with_deuling/run_7,1024,"[32, 32, 32]",,610,477.35
+5e-05,0.95,1,0.001,0.995,10000,500,128,16384,250,iterative_runs_fixed/with_deuling/run_8,1024,"[32, 32, 32, 16, 8]",,9196,475.11
+5e-05,0.95,1,0.001,0.995,10000,500,128,16384,250,iterative_runs_fixed/with_deuling/run_9,1024,"[32, 32, 32]",,2124,475.03
+5e-05,0.95,1,0.001,0.995,10000,500,128,16384,300,iterative_runs_fixed/with_deuling/run_10,1024,"[32, 32, 32, 16, 8]",,732,475.97
+5e-05,0.95,1,0.001,0.995,10000,500,128,16384,300,iterative_runs_fixed/with_deuling/run_11,1024,"[32, 32, 32]",,610,476.55
+5e-05,0.95,1,0.001,0.95,10000,500,128,16384,250,iterative_runs_fixed/with_deuling/run_12,1024,"[32, 32, 32, 16, 8]",,544,475.63
+5e-05,0.95,1,0.001,0.95,10000,500,128,16384,250,iterative_runs_fixed/with_deuling/run_13,1024,"[32, 32, 32]",,657,475.59
+5e-05,0.95,1,0.001,0.95,10000,500,128,16384,300,iterative_runs_fixed/with_deuling/run_14,1024,"[32, 32, 32, 16, 8]",,9999,105.97
+5e-05,0.95,1,0.001,0.95,10000,500,128,16384,300,iterative_runs_fixed/with_deuling/run_15,1024,"[32, 32, 32]",,613,477.67
+1e-05,0.95,1,0.001,0.995,10000,500,64,16384,250,iterative_runs_fixed/with_deuling/run_16,1024,"[32, 32, 32, 16, 8]",,9999,9.38
+1e-05,0.95,1,0.001,0.995,10000,500,64,16384,250,iterative_runs_fixed/with_deuling/run_17,1024,"[32, 32, 32]",,5659,476.79
+1e-05,0.95,1,0.001,0.995,10000,500,64,16384,300,iterative_runs_fixed/with_deuling/run_18,1024,"[32, 32, 32, 16, 8]",,9999,9.69
+1e-05,0.95,1,0.001,0.995,10000,500,64,16384,300,iterative_runs_fixed/with_deuling/run_19,1024,"[32, 32, 32]",,5963,476.93
+1e-05,0.95,1,0.001,0.95,10000,500,64,16384,250,iterative_runs_fixed/with_deuling/run_20,1024,"[32, 32, 32, 16, 8]",,7228,477.08
+1e-05,0.95,1,0.001,0.95,10000,500,64,16384,250,iterative_runs_fixed/with_deuling/run_21,1024,"[32, 32, 32]",,4256,477.71
+1e-05,0.95,1,0.001,0.95,10000,500,64,16384,300,iterative_runs_fixed/with_deuling/run_22,1024,"[32, 32, 32, 16, 8]",,9999,9.43
+1e-05,0.95,1,0.001,0.95,10000,500,64,16384,300,iterative_runs_fixed/with_deuling/run_23,1024,"[32, 32, 32]",,9999,123.84
+1e-05,0.95,1,0.001,0.995,10000,500,128,16384,250,iterative_runs_fixed/with_deuling/run_24,1024,"[32, 32, 32, 16, 8]",,9999,114.37
+1e-05,0.95,1,0.001,0.995,10000,500,128,16384,250,iterative_runs_fixed/with_deuling/run_25,1024,"[32, 32, 32]",,4210,475.47
+1e-05,0.95,1,0.001,0.995,10000,500,128,16384,300,iterative_runs_fixed/with_deuling/run_26,1024,"[32, 32, 32, 16, 8]",,4714,475.44
+1e-05,0.95,1,0.001,0.995,10000,500,128,16384,300,iterative_runs_fixed/with_deuling/run_27,1024,"[32, 32, 32]",,9999,291.02
+1e-05,0.95,1,0.001,0.95,10000,500,128,16384,250,iterative_runs_fixed/with_deuling/run_28,1024,"[32, 32, 32, 16, 8]",,3695,475.82
+1e-05,0.95,1,0.001,0.95,10000,500,128,16384,250,iterative_runs_fixed/with_deuling/run_29,1024,"[32, 32, 32]",,9999,316.52
+1e-05,0.95,1,0.001,0.95,10000,500,128,16384,300,iterative_runs_fixed/with_deuling/run_30,1024,"[32, 32, 32, 16, 8]",,9999,9.32
+1e-05,0.95,1,0.001,0.95,10000,500,128,16384,300,iterative_runs_fixed/with_deuling/run_31,1024,"[32, 32, 32]",,3736,476.23
